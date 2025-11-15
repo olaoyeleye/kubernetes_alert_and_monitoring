@@ -1,0 +1,12 @@
+grafana:
+  adminPassword: "admin"
+  service:
+    type: LoadBalancer
+
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+
+alertmanager:
+  service:
+    type: LoadBalancer

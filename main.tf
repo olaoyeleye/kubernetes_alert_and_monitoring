@@ -1,0 +1,123 @@
+# VPC module (official)
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "4.0.0" # compatible stable line; change if you want specific version
+
+  name = "monitoring-vpc"
+  cidr = "10.10.0.0/16"
+
+  azs             = slice(data.aws_availability_zones.available.names, 0, var.az_count)
+  public_subnets  = [for i in range(var.az_count) : cidrsubnet("10.10.0.0/16", 8, i + 128)]
+  private_subnets = [for i in range(var.az_count) : cidrsubnet("10.10.0.0/16", 8, i + 1)]
+
+  enable_nat_gateway = true
+  single_nat_gateway = false
+
+  tags = {
+    Environment = "monitoring"
+    ManagedBy   = "terraform"
+  }
+}
+
+data "aws_availability_zones" "available" {}
+
+# Security group for monitoring access
+resource "aws_security_group" "monitor_sg" {
+  name        = "monitoring-sg"
+  description = "Allow SSH, Prometheus, Grafana, Alertmanager, Node Exporter"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_cidr]
+  }
+
+  ingress {
+    description = "Prometheus"
+    from_port   = 9090
+    to_port     = 9090
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_cidr]
+  }
+
+  ingress {
+    description = "Alertmanager"
+    from_port   = 9093
+    to_port     = 9093
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_cidr]
+  }
+
+  ingress {
+    description = "Grafana"
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_cidr]
+  }
+
+  ingress {
+    description = "Node exporter"
+    from_port   = 9100
+    to_port     = 9100
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_cidr]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "monitoring-sg"
+  }
+}
+
+# EKS module
+module "eks_cluster" {
+  source  = "terraform-aws-modules/eks/aws"
+  version = "21.8.0"
+
+  cluster_name    = var.cluster_name
+  cluster_version = "1.29"
+
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = concat(module.vpc.private_subnets, module.vpc.public_subnets)
+
+  eks_managed_node_groups = {
+    node_group_1 = {
+      instance_types = [var.node_instance_type]
+      min_size       = var.node_min
+      max_size       = var.node_max
+      desired_size   = var.node_desired
+    }
+  }
+
+  tags = {
+    Environment = "monitoring"
+  }
+}
+
+
+# Helm child module (no provider blocks inside helm module)
+module "helm" {
+  source = "./helm"
+
+  cluster_name = module.eks_cluster.cluster_id
+  region       = var.region
+
+  providers = {
+    kubernetes = kubernetes
+    helm       = helm
+  }
+
+  # ensure module-level sequencing at root -- legacy modules that declare providers inside cannot accept depends_on,
+  # but because the child here will not declare providers we can safely declare depends_on in the root module if needed:
+  depends_on = [module.eks_cluster]
+}
