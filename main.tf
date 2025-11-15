@@ -80,7 +80,7 @@ resource "aws_security_group" "monitor_sg" {
 }
 
 # EKS module
-module "eks_cluster" {
+module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "21.8.0"
 
@@ -90,17 +90,32 @@ module "eks_cluster" {
   vpc_id     = module.vpc.vpc_id
   subnet_ids = concat(module.vpc.private_subnets, module.vpc.public_subnets)
 
+  # Managed node groups configuration
   eks_managed_node_groups = {
-    node_group_1 = {
-      instance_types = [var.node_instance_type]
-      min_size       = var.node_min
-      max_size       = var.node_max
-      desired_size   = var.node_desired
+    managed_nodes = {
+      instance_types = ["t3.micro"]
+      min_size       = 2
+      max_size       = 4
+      desired_size   = 3
+    }
+  }
+
+  # Enable AWS Auth ConfigMap management via Terraform
+  manage_aws_auth = true
+
+  # Example Fargate profile (optional)
+  fargate_profiles = {
+    default = {
+      selectors = [
+        { namespace = "default" },
+        { namespace = "kube-system" }
+      ]
     }
   }
 
   tags = {
     Environment = "monitoring"
+    ManagedBy   = "terraform"
   }
 }
 
