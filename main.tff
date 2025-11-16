@@ -246,10 +246,8 @@ module "eks" {
   # Manage aws-auth configmap
   manage_aws_auth_configmap = true
   
-  # Completely disable CloudWatch logging to avoid conflicts
-  cluster_enabled_log_types              = []
-  create_cloudwatch_log_group            = false
-  cloudwatch_log_group_retention_in_days = 0
+  # Disable CloudWatch logging to avoid log group conflicts
+  cluster_enabled_log_types = []
 
   tags = {
     Environment = "monitoring"

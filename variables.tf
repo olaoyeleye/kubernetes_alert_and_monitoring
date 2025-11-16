@@ -1,6 +1,6 @@
 variable "region" {
   type    = string
-  default = "us-east-1"
+  default = "eu-west-1"
 }
 
 variable "cluster_name" {
@@ -20,7 +20,7 @@ variable "az_count" {
 
 variable "node_instance_type" {
   type    = string
-  default = "t3.micro"
+  default = "m7i-flex.large"
 }
 
 variable "node_min" {
@@ -30,10 +30,10 @@ variable "node_min" {
 
 variable "node_desired" {
   type    = number
-  default = 2
+  default = 3
 }
 
 variable "node_max" {
   type    = number
-  default = 3
+  default = 4
 }

@@ -1,0 +1,73 @@
+506  cd eks_folder/monitoring_and_alerting
+  507  terraform state list
+  508  # Remove the remaining data sources from state
+  509  terraform state rm 'data.aws_availability_zones.available'
+  510  terraform state rm 'module.ebs_csi_irsa_role.data.aws_caller_identity.current'
+  511  terraform state rm 'module.ebs_csi_irsa_role.data.aws_partition.current'
+  512  # Verify state is now empty
+  513  terraform state list
+  514  # Double-check that AWS resources are actually deleted
+  515  aws eks list-clusters --region eu-west-2
+  516  # Check for any VPCs related to your project
+  517  aws ec2 describe-vpcs --region eu-west-2 --query 'Vpcs[*].[VpcId,Tags[?Key==`Name`].Value|[0],CidrBlock]' --output table
+  518  # Check for any running EC2 instances (EKS nodes)
+  519  aws ec2 describe-instances --region eu-west-2 --filters "Name=instance-state-name,Values=running" --query 'Reservations[*].Instances[*].[InstanceId,Tags[?Key==`Name`].Value|[0],State.Name]' --output table
+  520  # Confirm it's the default VPC
+  521  aws ec2 describe-vpcs --region eu-west-2 --vpc-ids vpc-0fc510e3ad7b8afea --query 'Vpcs[*].[VpcId,IsDefault,CidrBlock]' --output table
+  522  # Check for any Load Balancers (ELB/ALB/NLB) - these cost money!
+  523  aws elbv2 describe-load-balancers --region eu-west-2 --query 'LoadBalancers[*].[LoadBalancerName,LoadBalancerArn,State.Code]' --output table
+  524  # Check for any EBS volumes (these cost money!)
+  525  aws ec2 describe-volumes --region eu-west-2 --query 'Volumes[*].[VolumeId,State,Size,VolumeType]' --output table
+  526  # Check for any Elastic IPs (these cost money if not attached!)
+  527  aws ec2 describe-addresses --region eu-west-2 --query 'Addresses[*].[PublicIp,AllocationId,InstanceId]' --output table
+  528  # Check for any NAT Gateways (these are expensive!)
+  529  aws ec2 describe-nat-gateways --region eu-west-2 --query 'NatGateways[?State!=`deleted`].[NatGatewayId,State,VpcId]' --output table
+  530  # Check for any CloudWatch Log Groups (minimal cost but good to know)
+  531  aws logs describe-log-groups --region eu-west-2 --query 'logGroups[*].[logGroupName,storedBytes]' --output table
+  532  # Check for any IAM roles created by your project
+  533  aws iam list-roles --query 'Roles[?contains(RoleName, `eks`) || contains(RoleName, `monitoring`)].RoleName' --output table
+  534  # Check S3 buckets (unlikely but worth checking)
+  535  aws s3 ls --region eu-west-2
+  536  # Delete the CloudWatch Log Group
+  537  aws logs delete-log-group --log-group-name /aws/eks/monitoring-cluster/cluster --region eu-west-2
+  538  # Delete the IAM roles
+  539  aws iam delete-role --role-name managed_nodes-eks-node-group-20251116032718485300000008
+  540  aws iam delete-role --role-name monitoring-cluster-cluster-20251116032700410200000001
+  541  # Verify CloudWatch log group is gone
+  542  aws logs describe-log-groups --region eu-west-2 --query 'logGroups[*].[logGroupName,storedBytes]' --output table
+  543  # Verify IAM roles are gone
+  544  aws iam list-roles --query 'Roles[?contains(RoleName, `eks`) || contains(RoleName, `monitoring`)].RoleName' --output table
+  545  # List and detach policies from the first role
+  546  aws iam list-attached-role-policies --role-name managed_nodes-eks-node-group-20251116032718485300000008
+  547  aws iam list-role-policies --role-name managed_nodes-eks-node-group-20251116032718485300000008
+  548  # List and detach policies from the second role
+  549  aws iam list-attached-role-policies --role-name monitoring-cluster-cluster-20251116032700410200000001
+  550  aws iam list-role-policies --role-name monitoring-cluster-cluster-20251116032700410200000001
+  551  [ec2-user@ip-172-31-41-149 monitoring_and_alerting]$ # List and detach policies from the first role
+  552  aws iam list-attached-role-policies --role-name managed_nodes-eks-node-group-20251116032718485300000008
+  553  aws iam list-role-policies --role-name managed_nodes-eks-node-group-20251116032718485300000008
+  554  # List and detach policies from the second role
+  555  aws iam list-attached-role-policies --role-name monitoring-cluster-cluster-20251116032700410200000001
+  556  aws iam list-role-policies --role-name monitoring-cluster-cluster-20251116032700410200000001
+  557  {     "AttachedPolicies": [;         {             "PolicyName": "AmazonEKS_CNI_Policy",;             "PolicyArn": "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy";         },;         {             "PolicyName": "AmazonEC2ContainerRegistryReadOnly",;             "PolicyArn": "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly";         },;         {             "PolicyName": "AmazonEKSWorkerNodePolicy",;             "PolicyArn": "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy";         };     ]; }; {     "PolicyNames": []; }; {     "AttachedPolicies": [;         {             "PolicyName": "AmazonEKSClusterPolicy",;             "PolicyArn": "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy";         },;         {             "PolicyName": "monitoring-cluster-cluster-ClusterEncryption20251116032721964900000009",;             "PolicyArn": "arn:aws:iam::647743454395:policy/monitoring-cluster-cluster-ClusterEncryption20251116032721964900000009";         };     ]; }; {     "PolicyNames": []; }; 
+  558  clear
+  559  # Detach policies from the first role (node group role)
+  560  aws iam detach-role-policy --role-name managed_nodes-eks-node-group-20251116032718485300000008 --policy-arn arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+  561  aws iam detach-role-policy --role-name managed_nodes-eks-node-group-20251116032718485300000008 --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+  562  aws iam detach-role-policy --role-name managed_nodes-eks-node-group-20251116032718485300000008 --policy-arn arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+  563  # Delete the first role
+  564  aws iam delete-role --role-name managed_nodes-eks-node-group-20251116032718485300000008
+  565  # Detach policies from the second role (cluster role)
+  566  aws iam detach-role-policy --role-name monitoring-cluster-cluster-20251116032700410200000001 --policy-arn arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+  567  aws iam detach-role-policy --role-name monitoring-cluster-cluster-20251116032700410200000001 --policy-arn arn:aws:iam::647743454395:policy/monitoring-cluster-cluster-ClusterEncryption20251116032721964900000009
+  568  # Delete the custom policy first
+  569  aws iam delete-policy --policy-arn arn:aws:iam::647743454395:policy/monitoring-cluster-cluster-ClusterEncryption20251116032721964900000009
+  570  # Delete the second role
+  571  aws iam delete-role --role-name monitoring-cluster-cluster-20251116032700410200000001
+  572  # Delete the CloudWatch Log Group
+  573  aws logs delete-log-group --log-group-name /aws/eks/monitoring-cluster/cluster --region eu-west-2
+  574  # Verify everything is cleaned up
+  575  echo "=== Checking IAM Roles ==="
+  576  aws iam list-roles --query 'Roles[?contains(RoleName, `eks`) || contains(RoleName, `monitoring`)].RoleName' --output table
+  577  echo "=== Checking CloudWatch Log Groups ==="
+  578  aws logs describe-log-groups --region eu-west-2 --query 'logGroups[*].[logGroupName,storedBytes]' --output table

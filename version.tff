@@ -1,3 +1,5 @@
+ 
+
 # ========================================
 # Data Sources
 # ========================================
@@ -20,7 +22,7 @@ module "vpc" {
   private_subnets = [for i in range(var.az_count) : cidrsubnet("10.10.0.0/16", 8, i + 1)]
 
   enable_nat_gateway      = true
-  single_nat_gateway      = true   # CHANGED: Use single NAT gateway to avoid EIP limit
+  single_nat_gateway      = false
   map_public_ip_on_launch = true
   
   # Enable DNS for EKS
@@ -84,7 +86,7 @@ resource "aws_security_group" "monitor_sg" {
 # ========================================
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "19.21.0"
+  version = "20.31.0"
   
   cluster_name    = var.cluster_name
   cluster_version = "1.29"
@@ -96,12 +98,11 @@ module "eks" {
   cluster_endpoint_public_access  = true
   cluster_endpoint_private_access = true
 
+  # Simplified access control
+  enable_cluster_creator_admin_permissions = true
+
   # Enable IRSA
   enable_irsa = true
-  
-  # Disable cluster encryption to avoid KMS alias conflicts
-  create_kms_key = false
-  cluster_encryption_config = {}
 
   # Cluster addons
   cluster_addons = {
@@ -132,9 +133,11 @@ module "eks" {
       max_size     = 4
       desired_size = 2
       
+      # Use default launch template
+      use_custom_launch_template = false
+      
       # Disk configuration
       disk_size = 50
-      disk_type = "gp3"
       
       # IAM configuration
       iam_role_attach_cni_policy = true
@@ -242,14 +245,6 @@ module "eks" {
       cidr_blocks = [module.vpc.vpc_cidr_block]
     }
   }
-
-  # Manage aws-auth configmap
-  manage_aws_auth_configmap = true
-  
-  # Completely disable CloudWatch logging to avoid conflicts
-  cluster_enabled_log_types              = []
-  create_cloudwatch_log_group            = false
-  cloudwatch_log_group_retention_in_days = 0
 
   tags = {
     Environment = "monitoring"
